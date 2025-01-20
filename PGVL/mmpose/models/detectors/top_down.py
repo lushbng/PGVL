@@ -397,13 +397,10 @@ class PGVL(BasePose):
 
         self.gamma = nn.Parameter(torch.ones(text_dim) * 1e-3)
 
-        self.my=EmbeddingProcessor(  # 训练的时候才初始化
+        self.my=EmbeddingProcessor(  
             parse_dim_list=[768,512,1024], ew=[2,2,2], gp_list=[[2,2],[2,2],[2,2]], num_heads=2, qkv_bias=True, qk_scale=None,
-            attn_drop=0, drop=0, attn_head_dim=None,num_blocks=1,target_dim=768,ALL_LINEAR=ALL_LINEAR)
+            attn_drop=0, drop=0, attn_head_dim=None,num_blocks=1,target_dim=768,ALL_LINEAR=ALL_LINEAR)# heart of code
 
-        # self.my_down=nn.Linear(768,512)
-
-        # self.down=nn.Conv2d(768,512,kernel_size=1)
         self.my_up=nn.Linear(512,768)
 
     @property
@@ -730,13 +727,13 @@ class parse_my(nn.Module):
         ov = torch.cat(out_list_v, dim=2)
 
         qt = k = v = self.norm1(ot)
-        ot_self = self.self_attnt(qt)  # 文本的节点的互注意力，
+        ot_self = self.self_attnt(qt)  # context information
 
         qv = k = v = self.norm2(ov)
-        ov_self = self.self_attnv(qv)  # 视觉节点的互注意力，
+        ov_self = self.self_attnv(qv)  # context information
 
-        ot_cross =  self.cross_attnt(qt, qv, qv) # 交叉注意力，对文本加强
-        ov_cross =  self.cross_attnv(qv, qt, qt)  # 交叉注意力，对视觉加强
+        ot_cross =  self.cross_attnt(qt, qv, qv) # Cross attention 
+        ov_cross =  self.cross_attnv(qv, qt, qt)  # Cross attention 
 
         t_res=torch.cat((ot_self,ot_cross),dim=-1)
         t_res=self.downt(t_res)+ot
@@ -842,27 +839,26 @@ class EmbeddingProcessor(nn.Module):
                  num_heads=2, qkv_bias=True, qk_scale=None, attn_drop=0, drop=0,
                  attn_head_dim=None, target_dim=768, num_blocks=3,ALL_LINEAR=False):
         """
-        :param parse_dim_list: 每个parse子层的输入维度列表
-        :param num_blocks: parse层的数量
-        :param target_dim: 拼接后降维到的目标维度
+        :param parse_dim_list: List of input dimensions for each parse graph
+        :param num_blocks: numbers of parsing
+        :param target_dim: target dimension
         """
         super(EmbeddingProcessor, self).__init__()
 
         self.parse_dim_list = parse_dim_list
         self.num_blocks = num_blocks
 
-        # 生成每个parse层，根据parse_dim_list控制每个parse子层的输入维度
         self.parse_layers = nn.ModuleList([
-            nn.ModuleList([  # 每个parse层包含多个parse子层
-                parse_my(  # 在每一层都初始化一个不同的parse_my
+            nn.ModuleList([ 
+                parse_my(  
                     dim=parse_dim_list[i], ew=ew[i], gp_list=gp_list[i], num_heads=num_heads,
                     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop,
                     drop=drop, attn_head_dim=attn_head_dim
-                ) for i in range(len(parse_dim_list))  # 根据parse_dim_list的长度初始化多个parse子层
-            ]) for _ in range(num_blocks)  # num_blocks表示parse的层数
+                ) for i in range(len(parse_dim_list))  
+            ]) for _ in range(num_blocks)  
         ])
 
-        # 降维层：根据拼接的维度设置目标维度
+        # Dimensionality reduction layer: set the target dimension according to the concatenated dimension
         self.linear_layers_t = nn.ModuleList([
             nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
             for _ in range(num_blocks)
@@ -871,7 +867,7 @@ class EmbeddingProcessor(nn.Module):
             nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
             for _ in range(num_blocks)
         ])
-        # MLP层和LayerNorm层
+        # MLP layer and LayerNorm layer
         self.mlp_layers_t = nn.ModuleList([
             Mlp(in_features=target_dim, hidden_features=target_dim * 4, act_layer=nn.GELU, drop=0.1) for _ in
             range(num_blocks)
@@ -884,78 +880,66 @@ class EmbeddingProcessor(nn.Module):
         ])
         self.norm_layers_v = nn.ModuleList([nn.LayerNorm(target_dim) for _ in range(num_blocks)])
 
-        self.initial_t_dim = target_dim  # 假设t_my的初始维度是768，您可以根据需要调整
-        self.initial_v_dim = target_dim  # 假设v_my的初始维度是768，您可以根据需要调整
-
-        # 为t_my和v_my分别添加不同的线性变换层
-
-        # 为t_my和v_my分别添加不同的线性变换层
+        self.initial_t_dim = target_dim  # 
+        self.initial_v_dim = target_dim  #
+        # Linear changes, mapped to different semantic spaces
         if ALL_LINEAR:
             self.linear_transform_t = nn.ModuleList([
                 nn.ModuleList([
                     nn.Linear(self.initial_t_dim, p_dim)
                     for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  # 每个block的parse层都有不同的线性变换
+                ]) for _ in range(num_blocks)  
             ])
 
             self.linear_transform_v = nn.ModuleList([
                 nn.ModuleList([
                     nn.Linear(self.initial_v_dim, p_dim)
                     for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  # 每个block的parse层都有不同的线性变换
+                ]) for _ in range(num_blocks) 
             ])
         else:
             self.linear_transform_t = nn.ModuleList([
                 nn.ModuleList([
                     nn.Identity() if p_dim == self.initial_t_dim else nn.Linear(self.initial_t_dim, p_dim)
                     for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  # 每个block的parse层都有不同的线性变换
+                ]) for _ in range(num_blocks)  
             ])
 
             self.linear_transform_v = nn.ModuleList([
                 nn.ModuleList([
                     nn.Identity() if p_dim == self.initial_v_dim else nn.Linear(self.initial_v_dim, p_dim)
                     for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  # 每个block的parse层都有不同的线性变换
+                ]) for _ in range(num_blocks)  
             ])
 
 
     def forward(self, prompt_embeddings, vision_embeddings):
-        """
-        多次重复计算parse，并更新t_my和v_my。
-        """
         t_my = prompt_embeddings
         v_my = vision_embeddings
 
-        # Step 2: 多次迭代更新parse和计算t_my/v_my
+       
         for i in range(len(self.parse_layers)):
-            # 保存每个parse子层的结果，用于拼接
+            
             parse_results_t = []
             parse_results_v = []
 
-            # 每个parse层可以有多个子层，依次处理
             for j, parse_sublayer in enumerate(self.parse_layers[i]):
-                # 根据parse_dim_list动态调整维度
-                t_my_transformed = self.linear_transform_t[i][j](t_my)  # 当前层和子层的t_my维度调整
-                v_my_transformed = self.linear_transform_v[i][j](v_my)  # 当前层和子层的v_my维度调整
-                my = parse_sublayer([t_my_transformed, v_my_transformed]) # 这里假设parse的输入是t_my_transformed和v_my_transformed，可以根据实际需求进行调整
-                parse_results_t.append(my[0])  # 假设每个parse子层输出的是一个tuple，我们取第一个
-                parse_results_v.append(my[1])  # 假设每个parse子层输出的是一个tuple，我们取第一个
+                t_my_transformed = self.linear_transform_t[i][j](t_my)  # Mapped
+                v_my_transformed = self.linear_transform_v[i][j](v_my)  # Mapped
+                my = parse_sublayer([t_my_transformed, v_my_transformed]) 
+                parse_results_t.append(my[0])  
+                parse_results_v.append(my[1])  
 
-            # 拼接所有子层的结果
-            concatenated_result_t = torch.cat(parse_results_t, dim=-1)  # 在最后一个维度拼接
-            concatenated_result_v = torch.cat(parse_results_v, dim=-1)  # 在最后一个维度拼接
+            concatenated_result_t = torch.cat(parse_results_t, dim=-1) 
+            concatenated_result_v = torch.cat(parse_results_v, dim=-1) 
 
-            # 降维
-           # 降维（如果需要）
+            # Dimensionality reduction
             reduced_result_t = self.linear_layers_t[i](concatenated_result_t)#B,N,768
             reduced_result_v = self.linear_layers_v[i](concatenated_result_v)#B,N,768
 
-            # 更新t_my和v_my
+            # update
             t_my = reduced_result_t + t_my
             v_my = reduced_result_v + v_my
-
-            # 应用MLP和LayerNorm
             t_my = t_my + self.mlp_layers_t[i](self.norm_layers_t[i](t_my))
             v_my = v_my + self.mlp_layers_v[i](self.norm_layers_v[i](v_my))
 
