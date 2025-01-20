@@ -33,8 +33,7 @@
 
 ## Quick start
 ### For installation and environment setup, Please refer to mmpose (https://github.com/open-mmlab/mmpose) and CLAMP (https://github.com/xuzhang1199/CLAMP)
-### For the numbers and depth of parse graph, please modify gp, ew and gp_list in the corresponding configuration file
-### Training and Testing
+## Training and Testing
 e.g., 
 ```
 bash tools/dist_train.sh configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/mpii/PGVL_ViTB_mpii_256x256.py 2 "0,1"
