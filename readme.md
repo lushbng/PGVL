@@ -1,16 +1,35 @@
-# Refinement Module based on Parse Graph of Feature Map for Human Pose Estimation (RMPG)
+# Parse Graph-Based Visual-Language Fusion for Human Pose Estimation (PGVL)
 
 
 
 ![Illustrating the architecture of the proposed RMPG](figs/feature_parse.jpg)
 ## Main Results
 ### Results on COCO val2017 with detector having human AP of 56.4 on COCO val2017 dataset
-| Method            | Input size | #Params | Backbone |    AP |config|log|weight|
-|--------------------|------------|---------|--------|-------|----|----|-------|
-| SimpleBaselines+RMPG<sub>gp=[2,2]     |    256x192 | 38.0M   |   ResNet-50 | 0.725  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
-| SimpleBaselines+RMPG<sub>gp=[2,2]     |    256x192 | 57.0M   |   ResNet-101 | 0.731  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_resnest101_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1SA_t5bFIMwwbexxlOl_KtTSXqiJtb4yW/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1KtBKTQaQZYwh7zjEl8ZvBOlC6OI0fwir/view?usp=drive_link)
-| Hourglass+RMPG<sub>gp=[2,2]          |    256x256 | 98.0M   |   Hourglass52 | 0.740  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_hourglass52_8xb32-210e_coco-256x256.py)|[log](https://drive.google.com/file/d/12rsx3LSPalwE-DUFQUOXDO4UyskZeclg/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1SfRBxBQemHpi8rdD_QTnWWLxjiCj4Ll8/view?usp=drive_link)
-| ViTPose+RMPG<sub>gp=[2,2]             |    256x192 | 117.9M   |   ViTPose-B| 0.761 |[config](RMPG_vitpose_based/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/coco/ViTPose_base_coco_256x192.py)|[log](https://drive.google.com/file/d/13fMtpqVEYeoioFFzMbbOdvNaHPW6LFpd/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1VCoZ2ftyxJrnI2310OGkssWnFuZJ8lSq/view?usp=drive_link)
+| Method            | Input size | Backbone |    AP |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x192   |   ViT-B | 0.747  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+| Ours    |    256x192   |   ViT-L | 0.770  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+
+### Results on CrowdPose test dataset
+| Method            | Input size | Backbone |    AP |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x192   |   ViT-B | 0.678  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+
+### Results on MPII test val dataset without multi-scale testing
+| Method            | Input size | Backbone |    PCKh@0.5 |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x256   |   ViT-B | 0.914  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+
+### Results on AP-10K val dataset
+| Method            | Input size | Backbone |    AP |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x256   |   ViT-B | 0.780  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+| Ours    |    256x256   |   ViT-L | 0.822  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
+
+### Results on AnimalPose val dataset
+| Method            | Input size | Backbone |    AP |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x256   |   ViT-B | 0.790  |[config](RMPG_mmpose_based/configs/body_2d_keypoint/topdown_heatmap/coco/td-hm_res50_8xb64-210e_coco-256x192.py)|[log](https://drive.google.com/file/d/1MB_xKSj3cfeqqgqNnBThH-TUw0Lj3B5n/view?usp=drive_link)|[weight](https://drive.google.com/file/d/1EE320Ea5a9Yi3Ywpur1KPgElGSZ0vPnJ/view?usp=drive_link)
 
 
 
