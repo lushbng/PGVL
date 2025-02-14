@@ -32,7 +32,7 @@
 
 
 # Quick start
-## 1. Dependencies installation & data preparation
+## Dependencies installation & data preparation
 Please refer to mmpose (https://github.com/open-mmlab/mmpose) and CLAMP (https://github.com/xuzhang1199/CLAMP)
 
 ## Training
