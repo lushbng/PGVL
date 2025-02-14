@@ -397,7 +397,7 @@ class PGVL(BasePose):
 
         self.gamma = nn.Parameter(torch.ones(text_dim) * 1e-3)
 
-        self.my=EmbeddingProcessor(  
+        self.pgvl=EmbeddingProcessor(  
             parse_dim_list=[768,512,1024], ew=[2,2,2], gp_list=[[2,2],[2,2],[2,2]], num_heads=2, qkv_bias=True, qk_scale=None,
             attn_drop=0, drop=0, attn_head_dim=None,num_blocks=1,target_dim=768,ALL_LINEAR=ALL_LINEAR)# heart of code
 
@@ -467,14 +467,10 @@ class PGVL(BasePose):
 
 
         upt=self.my_up(prompt_embeddings)
-        my=self.my(upt,visual_embeddings.view(B,C,-1).permute(0,2,1)) # b 17 512; b 16*16 512
+        res=self.pgvl(upt,visual_embeddings.view(B,C,-1).permute(0,2,1)) # b 17 512; b 16*16 512
 
-        t_res=my[0]#768 可考虑要不要加t_source
-
-
-        v_res=my[1].permute(0,2,1).view(B,C,H,W)
-
-
+        t_res=res[0]#768
+        v_res=res[1].permute(0,2,1).view(B,C,H,W)
         return t_res, v_res
 
     def feature_adapt(self, visual_embeddings, text_embeddings, target, target_weight):
@@ -512,7 +508,7 @@ class PGVL(BasePose):
         target, target_down = target
         target_weight, target_down_weight = target_weight
         x_list = self.backbone(img)
-        text_embeddings, output_vsf = self.spatial_adapt(x_list)#视觉文本融合，针对文本的交叉注意力
+        text_embeddings, output_vsf = self.spatial_adapt(x_list)#cross attention
 
         if self.with_keypoint:
             output = self.keypoint_head(output_vsf)
@@ -520,7 +516,7 @@ class PGVL(BasePose):
         # if return loss
         losses = dict()
         contrastive_loss = self.feature_adapt(output_vsf, text_embeddings, target_down, target_down_weight)
-        losses.update(contrastive_loss)#权重为 self.CL_ratio=0.0005
+        losses.update(contrastive_loss)#self.CL_ratio=0.0005
         if self.with_keypoint:
             keypoint_losses = self.keypoint_head.get_loss(
                 output, target, target_weight)#weight=3
