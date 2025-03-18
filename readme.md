@@ -1,6 +1,6 @@
 # Parse Graph-Based Visual-Language Fusion for Human Pose Estimation (PGVL)
 
-![Illustrating the architecture of the proposed PGVL](figs/overview.jpg)
+![Illustrating the architecture of the proposed PGVL](figs/overview.gif)
 # Main Results
 ## Results on COCO val2017 with detector having human AP of 56.4 on COCO val2017 dataset
 | Method            | Input size | Backbone |    AP |config|log|weight|
