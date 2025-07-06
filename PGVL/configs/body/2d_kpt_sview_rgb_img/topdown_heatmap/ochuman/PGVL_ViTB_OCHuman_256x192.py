@@ -1,11 +1,11 @@
-_base_ = ['../../../../_base_/datasets/mpii.py']
+_base_ = ['../../../../_base_/datasets/ochuman.py']
 log_level = 'INFO'
 load_from = None
 resume_from = None
 dist_params = dict(backend='nccl')
 workflow = [('train', 1)]
 checkpoint_config = dict(interval=10,max_keep_ckpts=6)
-evaluation = dict(interval=10, metric='PCKh', save_best='PCKh')
+evaluation = dict(interval=10, metric='mAP', save_best='AP')
 
 optimizer = dict(type='AdamW',
                  lr=5e-4,
@@ -30,21 +30,20 @@ log_config = dict(
     ])
 
 channel_cfg = dict(
-    num_output_channels=16,
-    dataset_joints=16,
+    num_output_channels=17,
+    dataset_joints=17,
     dataset_channel=[
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
     ],
     inference_channel=[
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
     ])
 
 # model settings
 model = dict(
     type='PGVL',
-    ALL_LINEAR=True,
     clip_pretrained='pretrained/ViT-B-16.pt',
-    context_length=5,
+    context_length=12,
     text_dim=512,
     score_concat_index=3,
     visual_dim=512,
@@ -56,11 +55,10 @@ model = dict(
     target_dim=512,
     src_to_dim=[768,512],
     mode=3,
-    class_names=['right ankle', 'right knee', 'right hip', 'left hip', 'left knee',
-                 'left ankle', 'lower pelvis', 'upper thorax',
-                 'upper neck', 'upper head', 'right wrist',
-                 'right elbow', 'right shoulder', 'left shoulder',
-                 'left elbow', 'left wrist'],
+    class_names=['lose at the center of the face', 'left eye within the left orbit', 'right eye within the right orbit', 'left ear on the left side of the head', 'right ear on the right side of the head',
+                 'left shoulder at upper arm root', 'right shoulder at upper arm root', 'left elbow at upper forearm',
+                 'right elbow at upper forearm', 'left wrist at proximal hand', 'right wrist at proximal hand',
+                 'left hip at lateral pelvis', 'right hip at lateral pelvis', 'left knee at lower thigh','right knee at lower thigh','left ankle at lower leg','right ankle at lower leg'],
     text_encoder=dict(
         type='CLIPTextContextEncoder',
         context_length=13,
@@ -78,10 +76,11 @@ model = dict(
         transformer_layers=1,
         embed_dim=512,
         style='pytorch'),
+    context_decoder=None,
     backbone=dict(
         type='MY_VIT_VisionTransformer',
         pretrained='pretrained/mae_pretrain_vit_base.pth',
-        img_size=(256, 256),
+        img_size=(192, 256),
         patch_size=16,
         embed_dim=768,
         depth=12,
@@ -95,7 +94,7 @@ model = dict(
     keypoint_head=dict(
         type='TopdownHeatmapSimpleHead',
         num_deconv_layers=2,
-        num_deconv_filters=(256, 256),
+        num_deconv_filters=(192, 256),
         num_deconv_kernels=(4, 4),
         in_channels=512, #768+17
         out_channels=channel_cfg['num_output_channels'],
@@ -108,15 +107,22 @@ model = dict(
         modulate_kernel=11))
 
 data_cfg = dict(
-    image_size=[256, 256],
-    heatmap_size=[64, 64],
+    image_size=[192, 256],
+    heatmap_size=[48, 64],
     num_output_channels=channel_cfg['num_output_channels'],
     num_joints=channel_cfg['dataset_joints'],
     dataset_channel=channel_cfg['dataset_channel'],
     inference_channel=channel_cfg['inference_channel'],
+    soft_nms=False,
+    nms_thr=1.0,
+    oks_thr=0.9,
+    vis_thr=0.2,
     use_gt_bbox=True,
-    bbox_file=None,
+    det_bbox_thr=0.0,
+    bbox_file='data/coco/person_detection_results/'
+    'COCO_val2017_detections_AP_H_56_person.json',
 )
+
 
 train_pipeline = [
     dict(type='LoadImageFromFile'),
@@ -133,7 +139,7 @@ train_pipeline = [
         type='NormalizeTensor',
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]),
-    dict(type='TopDownGenerateTarget', sigma=2, downtarget=True, downsize=16),#duole 16
+    dict(type='TopDownGenerateTarget', sigma=2,downtarget=True,same_dim=False,short_dim=12, downsize=16),
     dict(
         type='Collect',
         keys=['img', 'target', 'target_weight'],
@@ -162,31 +168,33 @@ val_pipeline = [
 
 test_pipeline = val_pipeline
 
-data_root = 'data/mpii'
+data_root = 'data/ochuman'
 data = dict(
-    samples_per_gpu=32,#32
+    samples_per_gpu=128,
     workers_per_gpu=2,
-    val_dataloader=dict(samples_per_gpu=32),
-    test_dataloader=dict(samples_per_gpu=32),
+    val_dataloader=dict(samples_per_gpu=64),
+    test_dataloader=dict(samples_per_gpu=64),
     train=dict(
-        type='TopDownMpiiDataset',
-        ann_file=f'{data_root}/annot/train.json',
-        img_prefix=f'{data_root}/images/',
+        type='TopDownCocoDataset',
+        ann_file='data/coco/annotations/person_keypoints_train2017.json',
+        img_prefix='data/coco/images/train2017/',
         data_cfg=data_cfg,
         pipeline=train_pipeline,
         dataset_info={{_base_.dataset_info}}),
     val=dict(
-        type='TopDownMpiiDataset',
-        ann_file=f'{data_root}/annot/valid.json',
+        type='TopDownOCHumanDataset',
+        ann_file=f'{data_root}/annotations/'
+        'ochuman_val.json',
         img_prefix=f'{data_root}/images/',
         data_cfg=data_cfg,
         pipeline=val_pipeline,
         dataset_info={{_base_.dataset_info}}),
     test=dict(
-        type='TopDownMpiiDataset',
-        ann_file=f'{data_root}/annot/valid.json',
+        type='TopDownOCHumanDataset',
+        ann_file=f'{data_root}/annotations/'
+        'ochuman_test.json',
         img_prefix=f'{data_root}/images/',
         data_cfg=data_cfg,
-        pipeline=test_pipeline,
+        pipeline=val_pipeline,
         dataset_info={{_base_.dataset_info}}),
 )

@@ -4,8 +4,8 @@ load_from = None
 resume_from = None
 dist_params = dict(backend='nccl')
 workflow = [('train', 1)]
-checkpoint_config = dict(interval=10)
-evaluation = dict(interval=5, metric='mAP', save_best='AP')
+checkpoint_config = dict(interval=10,max_keep_ckpts=6)
+evaluation = dict(interval=10, metric='mAP', save_best='AP')
 
 optimizer = dict(type='AdamW',
                  lr=5e-4,
@@ -49,6 +49,13 @@ model = dict(
     visual_dim=768,
     token_embed_dim=768,
     CL_ratio=0.001,
+    parse_dim_list=[512,768],
+    ew=[2,2],#解析图深度
+    gp_list=[[2,2],[2,2]],
+    num_heads=2,
+    target_dim=768,
+    src_to_dim=[1024,768],
+    mode=1,
     class_names=['left eye', 'right eye', 'nose', 'neck', 'tail root',
                  'left shoulder', 'left elbow', 'left front paw',
                  'right shoulder', 'right elbow', 'right front paw',
@@ -71,6 +78,15 @@ model = dict(
         transformer_layers=1,
         embed_dim=768,
         style='pytorch'),
+    context_decoder=dict(
+        type='ContextDecoder',
+        transformer_width=256,
+        transformer_heads=4,
+        transformer_layers=3,
+        visual_dim=768,
+        dropout=0.1,
+        outdim=768,
+        style='pytorch'),
     backbone=dict(
         type='MY_VIT_VisionTransformer',
         pretrained='pretrained/mae_pretrain_vit_large.pth',
@@ -90,7 +106,7 @@ model = dict(
         num_deconv_layers=2,
         num_deconv_filters=(256, 256),
         num_deconv_kernels=(4, 4),
-        in_channels=1024, #1024+17
+        in_channels=768+512, #1024+17
         out_channels=channel_cfg['num_output_channels'],
         loss_keypoint=dict(type='JointsMSELoss', use_target_weight=True, loss_weight=1.0)),
     train_cfg=dict(),

@@ -2,32 +2,31 @@
 
 ![Illustrating the architecture of the proposed PGVL](figs/overview.gif)
 # Main Results
-## Results on COCO val2017 with detector having human AP of 56.4 on COCO val2017 dataset
-| Method            | Input size | Backbone |    AP |config|log|weight|
-|--------------------|------------|--------|-------|----|----|-------|
-| Ours    |    256x192   |   ViT-B | 0.747  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/coco/PGVL_ViTB_coco_256X192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241220_225929_coco_ViT_B.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_210_coco_ViT_B.pth)
-| Ours    |    256x192   |   ViT-L | 0.770  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/coco/PGVL_ViTL_coco_256X192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241224_154254_COCO_VIT_L.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_190_COCO_VIT_L.pth)
-
 ## Results on CrowdPose test dataset
 | Method            | Input size | Backbone |    AP |config|log|weight|
 |--------------------|------------|--------|-------|----|----|-------|
-| Ours    |    256x192   |   ViT-B | 0.678  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/crowdpose/PGVL_ViTB_crowdpose_256X192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241219_211951_CP_VIT_B.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_200__CP_VIT_B.pth)
+| Ours    |    256x192   |   ViT-B | 0.682  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/crowdpose/PGVL_ViTB_crowdpose_256X192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250415_053751.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_210.pth)
 
 ## Results on MPII val dataset without multi-scale testing
 | Method            | Input size | Backbone |    PCKh@0.5 |config|log|weight|
 |--------------------|------------|--------|-------|----|----|-------|
-| Ours    |    256x256   |   ViT-B | 0.914  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/mpii/PGVL_ViTB_mpii_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250111_141721_MPII_VIT_B.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_PCKh_epoch_200_MPII_VIT_B.pth)
+| Ours    |    256x256   |   ViT-B | 0.917  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/mpii/PGVL_ViTB_mpii_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250403_111605.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_PCKh_epoch_210.pth)
+
+## Results on OCHuman val dataset
+| Method            | Input size | Backbone |    PCKh@0.5 |config|log|weight|
+|--------------------|------------|--------|-------|----|----|-------|
+| Ours    |    256x192   |   ViT-B | 0.628  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/ochuman/PGVL_ViTB_OCHuman_256x192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250405_021127.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_210.pth)
+
 
 ## Results on AP-10K val dataset
 | Method            | Input size | Backbone |    AP |config|log|weight|
 |--------------------|------------|--------|-------|----|----|-------|
-| Ours    |    256x256   |   ViT-B | 0.780  |[config](PGVL/configs/animal/2d_kpt_sview_rgb_img/topdown_heatmap/ap10k/PGVL_ViTB_ap10k_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241224_231343__AP10K_VIT_B.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_210_AP10K_VIT_B.pth)
-| Ours    |    256x256   |   ViT-L | 0.822  |[config](PGVL/configs/animal/2d_kpt_sview_rgb_img/topdown_heatmap/ap10k/PGVL_ViTL_ap10k_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241219_182059.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_185.pth)
+| Ours    |    256x256   |   ViT-L | 0.821  |[config](PGVL/configs/animal/2d_kpt_sview_rgb_img/topdown_heatmap/ap10k/PGVL_ViTL_ap10k_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250412_112030.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_140.pth)
 
 ### Results on AnimalPose val dataset
 | Method            | Input size | Backbone |    AP |config|log|weight|
 |--------------------|------------|--------|-------|----|----|-------|
-| Ours    |    256x256   |   ViT-B | 0.790  |[config](PGVL/configs/animal/2d_kpt_sview_rgb_img/topdown_heatmap/animalpose/PGVL_ViTB_animalpose_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20241224_192746_AnimalPose_VIT_B.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_200_AnimalPose_VIT_B.pth)
+| Ours    |    256x256   |   ViT-B | 0.793  |[config](PGVL/configs/animal/2d_kpt_sview_rgb_img/topdown_heatmap/animalpose/PGVL_ViTB_animalpose_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250412_154812.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_200.pth)
 
 
 

@@ -42,13 +42,19 @@ channel_cfg = dict(
 # model settings
 model = dict(
     type='PGVL',
-    ALL_LINEAR=True,
     clip_pretrained='pretrained/ViT-B-16.pt',
     context_length=5,
     text_dim=512,
     score_concat_index=3,
     visual_dim=512,
     CL_ratio=0.001,
+    parse_dim_list=[512,768],
+    ew=[2,2],#解析图深度
+    gp_list=[[2,2],[2,2]],
+    num_heads=2,
+    target_dim=768,
+    src_to_dim=[1024,768],
+    mode=2,
     class_names=['left eye', 'right eye', 'left ear base','right ear base','nose', 'throat', 'tail base',
                  'withers', 'left front elbow', 'right front elbow','left back elbow', 'right back elbow',
                  'left front knee', 'right front knee','left back knee', 'right back knee',
@@ -70,6 +76,7 @@ model = dict(
         transformer_layers=1,
         embed_dim=512,
         style='pytorch'),
+    context_decoder=None,
     backbone=dict(
         type='MY_VIT_VisionTransformer',
         pretrained='pretrained/mae_pretrain_vit_base.pth',
@@ -89,7 +96,7 @@ model = dict(
         num_deconv_layers=2,
         num_deconv_filters=(256, 256),
         num_deconv_kernels=(4, 4),
-        in_channels=768, #768+17
+        in_channels=512+256, #768+17
         out_channels=channel_cfg['num_output_channels'],
         loss_keypoint=dict(type='JointsMSELoss', use_target_weight=True, loss_weight=1.0)),
     train_cfg=dict(),
