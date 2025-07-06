@@ -13,7 +13,7 @@
 | Ours    |    256x256   |   ViT-B | 0.917  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/mpii/PGVL_ViTB_mpii_256x256.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250403_111605.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_PCKh_epoch_210.pth)
 
 ## Results on OCHuman val dataset
-| Method            | Input size | Backbone |    PCKh@0.5 |config|log|weight|
+| Method            | Input size | Backbone |   AP |config|log|weight|
 |--------------------|------------|--------|-------|----|----|-------|
 | Ours    |    256x192   |   ViT-B | 0.628  |[config](PGVL/configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/ochuman/PGVL_ViTB_OCHuman_256x192.py)|[log](https://huggingface.co/shhibbnglulul/PGVL/blob/main/20250405_021127.log)|[weight](https://huggingface.co/shhibbnglulul/PGVL/blob/main/best_AP_epoch_210.pth)
 
