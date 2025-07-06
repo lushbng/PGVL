@@ -4,7 +4,7 @@ load_from = None
 resume_from = None
 dist_params = dict(backend='nccl')
 workflow = [('train', 1)]
-checkpoint_config = dict(interval=10)
+checkpoint_config = dict(interval=10,max_keep_ckpts=6)
 evaluation = dict(interval=10, metric='mAP', save_best='AP')
 
 optimizer = dict(type='AdamW',
@@ -47,11 +47,18 @@ model = dict(
     text_dim=512,
     score_concat_index=3,
     visual_dim=512,
-    CL_ratio=0.001,
+    CL_ratio=0.0005,
+    parse_dim_list=[512],
+    ew=[2],
+    gp_list=[[2,2]],
+    num_heads=2,
+    target_dim=512,
+    src_to_dim=[768,512],
+    mode=5,
     class_names=['left shoulder', 'right shoulder', 'left elbow', 'right elbow', 'left wrist',
                  'right wrist', 'left hip', 'right hip',
                  'left knee', 'right knee', 'left ankle',
-                 'right ankle', 'head', 'neck'],
+                 'right ankle', 'upper head', 'upper neck'],
     text_encoder=dict(
         type='CLIPTextContextEncoder',
         context_length=13,
@@ -69,6 +76,7 @@ model = dict(
         transformer_layers=1,
         embed_dim=512,
         style='pytorch'),
+    context_decoder=None,
     backbone=dict(
         type='MY_VIT_VisionTransformer',
         pretrained='pretrained/mae_pretrain_vit_base.pth',
@@ -88,7 +96,7 @@ model = dict(
         num_deconv_layers=2,
         num_deconv_filters=(192, 256),
         num_deconv_kernels=(4, 4),
-        in_channels=768, #768+17
+        in_channels=512, #768+17
         out_channels=channel_cfg['num_output_channels'],
         loss_keypoint=dict(type='JointsMSELoss', use_target_weight=True, loss_weight=1.0)),
 
@@ -162,27 +170,27 @@ test_pipeline = val_pipeline
 
 data_root = f'data/crowd_pose'
 data = dict(
-    samples_per_gpu=64,
+    samples_per_gpu=128,
     workers_per_gpu=2,
-    val_dataloader=dict(samples_per_gpu=32),
-    test_dataloader=dict(samples_per_gpu=32),
+    val_dataloader=dict(samples_per_gpu=64),
+    test_dataloader=dict(samples_per_gpu=64),
     train=dict(
         type='TopDownCrowdPoseDataset',
-        ann_file=f'{data_root}/annotations/crowdpose_trainval.json',
+        ann_file=f'{data_root}/json/mmpose_crowdpose_trainval.json',
         img_prefix=f'{data_root}/images/',
         data_cfg=data_cfg,
         pipeline=train_pipeline,
         dataset_info={{_base_.dataset_info}}),
     val=dict(
         type='TopDownCrowdPoseDataset',
-        ann_file=f'{data_root}/annotations/crowdpose_test.json',
+        ann_file=f'{data_root}/json/mmpose_crowdpose_test.json',
         img_prefix=f'{data_root}/images/',
         data_cfg=data_cfg,
         pipeline=val_pipeline,
         dataset_info={{_base_.dataset_info}}),
     test=dict(
         type='TopDownCrowdPoseDataset',
-        ann_file=f'{data_root}/annotations/crowdpose_test.json',
+        ann_file=f'{data_root}/json/mmpose_crowdpose_test.json',
         img_prefix=f'{data_root}/images/',
         data_cfg=data_cfg,
         pipeline=test_pipeline,

@@ -320,9 +320,9 @@ class PGVL(BasePose):
     def __init__(self,
                  backbone,
                  text_encoder,
+                 context_decoder,
                  class_names,
                  context_length,
-                 ALL_LINEAR=False,
                  score_concat_index=3,
                  identity_head=None,
                  upconv_head=None,
@@ -337,7 +337,16 @@ class PGVL(BasePose):
                  train_cfg=None,
                  test_cfg=None,
                  loss_pose=None,
-                 pretrained=None):
+                 pretrained=None,
+                 parse_dim_list=None,
+                 ew=None,
+                 gp_list=None,
+                 num_heads=None,
+                 target_dim=None,
+                 src_to_dim=None,
+                 mode=None
+
+                 ):
         super().__init__()
         self.fp16_enabled = False
         self.backbone = builder.build_backbone(backbone)
@@ -362,7 +371,8 @@ class PGVL(BasePose):
         if text_encoder is not None:
             self.text_encoder = builder.build_backbone(text_encoder)
 
-
+        # if context_decoder is not None:
+        #     self.context_decoder = builder.build_backbone(context_decoder)
 
         self.with_prompt_encoder = False
         if prompt_encoder is not None:
@@ -385,8 +395,6 @@ class PGVL(BasePose):
         self.num_classes = len(self.class_names)
 
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-        # self.text_projection = nn.Parameter(torch.empty(text_encoder['embed_dim'], visual_dim))
-        # nn.init.normal_(self.text_projection, std=text_encoder['embed_dim'] ** -0.5)
         self.CL_visual = nn.CrossEntropyLoss(reduce=False)
         self.CL_text = nn.CrossEntropyLoss(reduce=False)
         self.CL_ratio = CL_ratio
@@ -397,11 +405,11 @@ class PGVL(BasePose):
 
         self.gamma = nn.Parameter(torch.ones(text_dim) * 1e-3)
 
-        self.pgvl=EmbeddingProcessor(  
-            parse_dim_list=[768,512,1024], ew=[2,2,2], gp_list=[[2,2],[2,2],[2,2]], num_heads=2, qkv_bias=True, qk_scale=None,
-            attn_drop=0, drop=0, attn_head_dim=None,num_blocks=1,target_dim=768,ALL_LINEAR=ALL_LINEAR)# heart of code
-
-        self.my_up=nn.Linear(512,768)
+        self.my=pgvl(  
+            parse_dim_list=parse_dim_list, ew=ew, gp_list=gp_list, num_heads=num_heads, qkv_bias=True, qk_scale=None,
+            attn_drop=0, drop=0, attn_head_dim=None,num_blocks=1,target_dim=target_dim,mode=mode)
+        self.my_up=nn.Identity()
+        self.my_up1=nn.Linear(src_to_dim[0],src_to_dim[1])
 
     @property
     def with_keypoint(self):
@@ -454,23 +462,16 @@ class PGVL(BasePose):
 
     def spatial_adapt(self, x):
         visual_embeddings = x.clone()# bs 768 16 16
-        # visual_embeddings = self.upv(visual_embeddings)#bs 128 16 16
         B, C, H, W = visual_embeddings.shape
         text_embeddings = self.text_encoder(self.texts.to(visual_embeddings.device), self.contexts).expand(B, -1, -1)#CLIPTextContextEncoder
-
-        # model the relation of prompts
         if self.with_prompt_encoder:
             text_embeddings = self.prompt_encoder(text_embeddings)
-
-
-        prompt_embeddings = text_embeddings# 
-
-
+        prompt_embeddings = text_embeddings# + self.gamma * refine_emb
         upt=self.my_up(prompt_embeddings)
-        res=self.pgvl(upt,visual_embeddings.view(B,C,-1).permute(0,2,1)) # b 17 512; b 16*16 512
+        my=self.my(upt,self.my_up1(visual_embeddings.view(B,C,-1).permute(0,2,1))) # b 17 512; b 16*16 512
+        t_res=my[0]#768 
+        v_res=my[1].permute(0,2,1).view(B,512,H,W)
 
-        t_res=res[0]#768
-        v_res=res[1].permute(0,2,1).view(B,C,H,W)
         return t_res, v_res
 
     def feature_adapt(self, visual_embeddings, text_embeddings, target, target_weight):
@@ -508,15 +509,15 @@ class PGVL(BasePose):
         target, target_down = target
         target_weight, target_down_weight = target_weight
         x_list = self.backbone(img)
-        text_embeddings, output_vsf = self.spatial_adapt(x_list)#cross attention
+        text_embeddings, x_list = self.spatial_adapt(x_list.clone())#视觉文本融合，针对文本的交叉注意力
 
         if self.with_keypoint:
-            output = self.keypoint_head(output_vsf)
+            output = self.keypoint_head(x_list.clone())
 
         # if return loss
         losses = dict()
-        contrastive_loss = self.feature_adapt(output_vsf, text_embeddings, target_down, target_down_weight)
-        losses.update(contrastive_loss)#self.CL_ratio=0.0005
+        contrastive_loss = self.feature_adapt(x_list.clone(), text_embeddings, target_down, target_down_weight)
+        losses.update(contrastive_loss)#权重为 self.CL_ratio=0.0005
         if self.with_keypoint:
             keypoint_losses = self.keypoint_head.get_loss(
                 output, target, target_weight)#weight=3
@@ -525,7 +526,6 @@ class PGVL(BasePose):
                 keypoint_accuracy = self.keypoint_head.get_accuracy(
                     output, target, target_weight)#
                 losses.update(keypoint_accuracy)
-
         return losses
 
     def forward_test(self, img, img_metas, return_heatmap=False, **kwargs):
@@ -671,72 +671,82 @@ class PGVL(BasePose):
             imwrite(img, out_file)
 
         return img
-class parse_my(nn.Module):
+
+class parse_cross(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None,
                  drop=0., attn_drop=0., drop_path=0., act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm, attn_head_dim=None, ew=2, gp_list=[2, 2]
+                 norm_layer=nn.LayerNorm, attn_head_dim=None, ew=2, gp_list=[2, 2],all_nodes=[1],source_dim=1
                  ):
         super().__init__()
         self.primi_dim = dim // num_heads
         self.gp = num_heads
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
-
-
         self.self_attnt = Attention_my(
             dim, num_heads=num_heads, qkv_bias=True)
         self.self_attnv = Attention_my(
             dim, num_heads=num_heads, qkv_bias=True
         )
         self.ew = ew
-        self.cross_attnt = Attention(dim, num_heads=2, proj_drop=0.1)
-        self.cross_attnv = Attention(dim, num_heads=2, proj_drop=0.1)
-
-        self.downv=nn.Linear(dim*2,dim)
-        self.downt=nn.Linear(dim*2,dim)
+        self.cross_attnt = Attention(dim, num_heads=8, proj_drop=0.1)
+        self.cross_attnv = Attention(dim, num_heads=8, proj_drop=0.1)
+        # filtered_list=[x for x in all_nodes if x >= dim]
+        # self.t_node_w = SimilarityComparator(target_channels=dim, source_channels=[source_dim,dim])
+        self.v_node_w = SimilarityComparator(target_channels=dim, source_channels=[source_dim,dim])
+        self.t_node_w = SimilarityComparator(target_channels=dim, source_channels=[source_dim,dim])
+        self.w = nn.Parameter(torch.tensor(0.5))  
+        self.w1 = nn.Parameter(torch.tensor(0.5))  
+        self.w2 = nn.Parameter(torch.tensor(0.5))  
+        self.w3 = nn.Parameter(torch.tensor(0.5))  
         if ew <= 0:
             self.block = nn.ModuleList([nn.Identity() for i in range(num_heads)])
 
         else:
             self.block = nn.ModuleList(
-                [parse_my(dim=self.primi_dim, num_heads=gp_list[ew - 1], mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
-                          qk_scale=qk_scale, drop=drop, attn_drop=attn_drop, drop_path=attn_drop, act_layer=act_layer,
-                          norm_layer=norm_layer, attn_head_dim=attn_head_dim, ew=ew - 1,
-                          gp_list=gp_list) for i in range(num_heads)])
+                [parse_cross(dim=self.primi_dim, num_heads=gp_list[ew - 1], mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
+                            qk_scale=qk_scale, drop=drop, attn_drop=attn_drop, drop_path=attn_drop, act_layer=act_layer,
+                            norm_layer=norm_layer, attn_head_dim=attn_head_dim, ew=ew - 1,
+                            gp_list=gp_list,all_nodes=all_nodes,source_dim=source_dim) for i in range(num_heads)])
 
-    def forward(self, x):  # x=[x_t,x_v]
+    def forward(self, x, nodes,root):
+        B,N,C=x[1].size()# x=[x_t,x_v],nodes=[x_t_nodes,x_v_nodes],root=[x_t,x_v]
         pre_list_t = torch.chunk(x[0].clone(), self.gp, dim=2)
         out_list_t = []
 
         pre_list_v = torch.chunk(x[1].clone(), self.gp, dim=2)
         out_list_v = []
+
         for i in range(self.gp):
             t = pre_list_t[i]
             v = pre_list_v[i]
-            # if self.ew==0:
-            #     res_list=[t.clone(),v.clone()]
-            # else:
-            res_list = self.block[i]([t.clone(), v.clone()])
-            out_list_t.append(res_list[0].clone())
-            out_list_v.append(res_list[1].clone())
+            if isinstance(self.block[i], nn.Identity):
+                res_list= [[t.clone(), v.clone()],nodes,root]  # 直接传递两个张量
+            else:
+                res_list= self.block[i]([t.clone(), v.clone()], nodes,root)  # 按原格式传递
+            out_list_t.append(res_list[0][0].clone())
+            out_list_v.append(res_list[0][1].clone())
         ot = torch.cat(out_list_t, dim=2)
         ov = torch.cat(out_list_v, dim=2)
-
+        
         qt = k = v = self.norm1(ot)
-        ot_self = self.self_attnt(qt)  # context information
+        ot_self = self.self_attnt(qt)  # 文本的节点的互注意力，
 
         qv = k = v = self.norm2(ov)
-        ov_self = self.self_attnv(qv)  # context information
+        ov_self = self.self_attnv(qv)  # 视觉节点的互注意力，
 
-        ot_cross =  self.cross_attnt(qt, qv, qv) # Cross attention 
-        ov_cross =  self.cross_attnv(qv, qt, qt)  # Cross attention 
+        ot_cross = self.cross_attnt(qt, qv, qv)  # 交叉注意力，对文本加强
+        ov_cross = self.cross_attnv(qv, qt, qt)  # 交叉注意力，对视觉加强
 
-        t_res=torch.cat((ot_self,ot_cross),dim=-1)
-        t_res=self.downt(t_res)+ot
+        t_res=torch.sigmoid(self.w3)*ot_self+ot_cross+ot
+        t_res =  torch.sigmoid(self.w)*self.t_node_w(t_res.clone(), [root[0].clone(),x[0].clone()])+t_res
 
-        v_res=torch.cat((ov_self,ov_cross),dim=-1)
-        v_res=self.downv(v_res)+ov
-        return [t_res, v_res]
+        v_res=torch.sigmoid(self.w2)*ov_self+ov_cross+ov
+        v_res = torch.sigmoid(self.w1)*self.v_node_w(v_res.clone(), [root[1].clone(),x[1].clone()])+v_res
+
+        print(self.w,self.w1,self.w2,self.w3)
+        return [t_res, v_res], nodes,root
+
+
 class Attention_my(nn.Module):
     def __init__(
             self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
@@ -764,9 +774,6 @@ class Attention_my(nn.Module):
         qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         qkv = qkv.reshape(3, B, N * self.num_heads, C // self.num_heads)  # 3，B,heads*N，C//heads
         q, k, v = qkv[0], qkv[1], qkv[2]
-        # qkv=x.clone().reshape(B,N*self.num_heads,C//self.num_heads)
-        # q, k, v = qkv, qkv, qkv  # make torchscript happy (cannot use tensor as tuple)
-
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
 
@@ -778,6 +785,7 @@ class Attention_my(nn.Module):
         x = self.proj_drop(x)
 
         return x
+
 
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
@@ -830,113 +838,273 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
-class EmbeddingProcessor(nn.Module):
+
+
+class pgvl(nn.Module):
     def __init__(self, parse_dim_list=[768], ew=[2], gp_list=[[2, 2]],
                  num_heads=2, qkv_bias=True, qk_scale=None, attn_drop=0, drop=0,
-                 attn_head_dim=None, target_dim=768, num_blocks=3,ALL_LINEAR=False):
+                 attn_head_dim=None, target_dim=768, num_blocks=3,mode=None):
         """
-        :param parse_dim_list: List of input dimensions for each parse graph
-        :param num_blocks: numbers of parsing
-        :param target_dim: target dimension
+        :param parse_dim_list: 每个parse子层的输入维度列表
+        :param num_blocks: parse层的数量
+        :param target_dim: 拼接后降维到的目标维度
         """
-        super(EmbeddingProcessor, self).__init__()
-
+        super(pgvl, self).__init__()
+        self.mode = mode
         self.parse_dim_list = parse_dim_list
         self.num_blocks = num_blocks
-
         self.parse_layers = nn.ModuleList([
-            nn.ModuleList([ 
-                parse_my(  
+            nn.ModuleList([  # 每个parse层包含多个parse子层
+                parse_cross(  # 在每一层都初始化一个不同的类
                     dim=parse_dim_list[i], ew=ew[i], gp_list=gp_list[i], num_heads=num_heads,
                     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop,
-                    drop=drop, attn_head_dim=attn_head_dim
-                ) for i in range(len(parse_dim_list))  
-            ]) for _ in range(num_blocks)  
+                    drop=drop, attn_head_dim=attn_head_dim,all_nodes=None,source_dim=parse_dim_list[i]
+                ) for i in range(len(parse_dim_list))  # 根据parse_dim_list的长度初始化多个parse子层
+            ]) for _ in range(num_blocks)  # num_blocks表示parse的层数
         ])
 
-        # Dimensionality reduction layer: set the target dimension according to the concatenated dimension
-        self.linear_layers_t = nn.ModuleList([
-            nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
-            for _ in range(num_blocks)
-        ])
-        self.linear_layers_v = nn.ModuleList([
-            nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
-            for _ in range(num_blocks)
-        ])
-        # MLP layer and LayerNorm layer
+        # 降维层：根据拼接的维度设置目标维度
+        # 降维层：根据mode决定实现方式
+        if mode == 1:
+            self.linear_layers_t = nn.ModuleList([nn.Identity() for _ in range(num_blocks)])
+            self.linear_layers_v = nn.ModuleList([nn.Identity() for _ in range(num_blocks)])
+        elif mode == 2:
+            self.linear_layers_t = nn.ModuleList([nn.Linear(sum(parse_dim_list), sum(parse_dim_list)) for _ in range(num_blocks)])
+            self.linear_layers_v = nn.ModuleList([nn.Linear(sum(parse_dim_list), sum(parse_dim_list)) for _ in range(num_blocks)])
+        elif mode in [3, 4]:
+            self.linear_layers_t = nn.ModuleList([
+                nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
+                for _ in range(num_blocks)])
+            self.linear_layers_v = nn.ModuleList([
+                nn.Identity() if sum(parse_dim_list) == target_dim else nn.Linear(sum(parse_dim_list), target_dim)
+                for _ in range(num_blocks)])
+        elif mode == 5:
+            self.linear_layers_t = nn.ModuleList([
+                nn.Identity() if len(parse_dim_list)==1 else nn.Linear(sum(parse_dim_list), sum(parse_dim_list))
+                for _ in range(num_blocks)])
+            self.linear_layers_v = nn.ModuleList([
+                nn.Identity() if len(parse_dim_list)==1 else nn.Linear(sum(parse_dim_list), sum(parse_dim_list))
+                for _ in range(num_blocks)])
+        # MLP和LayerNorm层
+        mlp_dim = sum(parse_dim_list) if mode in [1, 2, 5] else target_dim
         self.mlp_layers_t = nn.ModuleList([
-            Mlp(in_features=target_dim, hidden_features=target_dim * 4, act_layer=nn.GELU, drop=0.1) for _ in
-            range(num_blocks)
-        ])
-        self.norm_layers_t = nn.ModuleList([nn.LayerNorm(target_dim) for _ in range(num_blocks)])
-
+            Mlp(in_features=mlp_dim, hidden_features=mlp_dim * 4, act_layer=nn.GELU, drop=0.1) 
+            for _ in range(num_blocks)])
+        self.norm_layers_t = nn.ModuleList([nn.LayerNorm(mlp_dim) for _ in range(num_blocks)])
+        
         self.mlp_layers_v = nn.ModuleList([
-            Mlp(in_features=target_dim, hidden_features=target_dim * 4, act_layer=nn.GELU, drop=0.1) for _ in
-            range(num_blocks)
-        ])
-        self.norm_layers_v = nn.ModuleList([nn.LayerNorm(target_dim) for _ in range(num_blocks)])
+            Mlp(in_features=mlp_dim, hidden_features=mlp_dim * 4, act_layer=nn.GELU, drop=0.1) 
+            for _ in range(num_blocks)])
+        self.norm_layers_v = nn.ModuleList([nn.LayerNorm(mlp_dim) for _ in range(num_blocks)])
 
-        self.initial_t_dim = target_dim  # 
-        self.initial_v_dim = target_dim  #
-        # Linear changes, mapped to different semantic spaces
-        if ALL_LINEAR:
-            self.linear_transform_t = nn.ModuleList([
-                nn.ModuleList([
-                    nn.Linear(self.initial_t_dim, p_dim)
-                    for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  
-            ])
+        self.initial_t_dim = target_dim
+        self.initial_v_dim = target_dim
 
-            self.linear_transform_v = nn.ModuleList([
-                nn.ModuleList([
-                    nn.Linear(self.initial_v_dim, p_dim)
-                    for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks) 
-            ])
-        else:
-            self.linear_transform_t = nn.ModuleList([
-                nn.ModuleList([
-                    nn.Identity() if p_dim == self.initial_t_dim else nn.Linear(self.initial_t_dim, p_dim)
-                    for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  
-            ])
-
-            self.linear_transform_v = nn.ModuleList([
-                nn.ModuleList([
-                    nn.Identity() if p_dim == self.initial_v_dim else nn.Linear(self.initial_v_dim, p_dim)
-                    for p_dim in parse_dim_list
-                ]) for _ in range(num_blocks)  
-            ])
-
+        # 线性变换层
+        self.linear_transform_t = nn.ModuleList([
+            nn.ModuleList([
+                nn.Identity() if (mode == 1 and p_dim == self.initial_t_dim) else nn.Linear(self.initial_t_dim, p_dim)
+                for p_dim in parse_dim_list
+            ]) for _ in range(num_blocks)])
+        
+        self.linear_transform_v = nn.ModuleList([
+            nn.ModuleList([
+                nn.Identity() if (mode == 1 and p_dim == self.initial_v_dim) else nn.Linear(self.initial_v_dim, p_dim)
+                for p_dim in parse_dim_list
+            ]) for _ in range(num_blocks)])
+        
+        # up_t/up_v层 (mode 1,2,5有这些层)
+        if mode in [1, 2, 5]:
+            if mode == 1:
+                self.up_v = nn.ModuleList([nn.Linear(target_dim, sum(parse_dim_list)) for _ in range(num_blocks)])
+                self.up_t = nn.ModuleList([nn.Linear(target_dim, sum(parse_dim_list)) for _ in range(num_blocks)])
+            elif mode == 2:
+                self.up_v = nn.ModuleList([nn.Linear(target_dim, sum(parse_dim_list)) for _ in range(num_blocks)])
+                self.up_t = nn.ModuleList([nn.Linear(target_dim, sum(parse_dim_list)) for _ in range(num_blocks)])
+            elif mode == 5:
+                self.up_v = nn.ModuleList([
+                    nn.Identity() if len(parse_dim_list)==1 else nn.Linear(target_dim, sum(parse_dim_list))
+                    for _ in range(num_blocks)])
+                self.up_t = nn.ModuleList([
+                    nn.Identity() if len(parse_dim_list)==1 else nn.Linear(target_dim, sum(parse_dim_list))
+                    for _ in range(num_blocks)])
 
     def forward(self, prompt_embeddings, vision_embeddings):
+        """
+        多次重复计算parse，并更新t_my和v_my。
+        """
         t_my = prompt_embeddings
         v_my = vision_embeddings
 
-       
+        # Step 2: 多次迭代更新parse和计算t_my/v_my
         for i in range(len(self.parse_layers)):
-            
+            # 保存每个parse子层的结果，用于拼接
             parse_results_t = []
             parse_results_v = []
 
+            # 每个parse层可以有多个子层，依次处理
             for j, parse_sublayer in enumerate(self.parse_layers[i]):
-                t_my_transformed = self.linear_transform_t[i][j](t_my)  # Mapped
-                v_my_transformed = self.linear_transform_v[i][j](v_my)  # Mapped
-                my = parse_sublayer([t_my_transformed, v_my_transformed]) 
-                parse_results_t.append(my[0])  
-                parse_results_v.append(my[1])  
+                t_my_transformed = self.linear_transform_t[i][j](t_my)  # 当前层和子层的t_my维度调整
+                v_my_transformed = self.linear_transform_v[i][j](v_my)  # 当前层和子层的v_my维度调整
+                my = parse_sublayer([t_my_transformed, v_my_transformed],
+                                    None,[t_my_transformed, v_my_transformed])  # 这里假设parse的输入是t_my_transformed和v_my_transformed，可以根据实际需求进行调整
+                parse_results_t.append(my[0][0])  # 假设每个parse子层输出的是一个tuple，我们取第一个
+                parse_results_v.append(my[0][1])  # 假设每个parse子层输出的是一个tuple，我们取第一个
 
-            concatenated_result_t = torch.cat(parse_results_t, dim=-1) 
-            concatenated_result_v = torch.cat(parse_results_v, dim=-1) 
+            # 拼接所有子层的结果
+            concatenated_result_t = torch.cat(parse_results_t, dim=-1)  # 在最后一个维度拼接
+            concatenated_result_v = torch.cat(parse_results_v, dim=-1)  # 在最后一个维度拼接
 
-            # Dimensionality reduction
-            reduced_result_t = self.linear_layers_t[i](concatenated_result_t)#B,N,768
-            reduced_result_v = self.linear_layers_v[i](concatenated_result_v)#B,N,768
+            # 降维
+            # 降维（如果需要）
+            reduced_result_t = self.linear_layers_t[i](concatenated_result_t)  # B,N,768
+            reduced_result_v = self.linear_layers_v[i](concatenated_result_v)  # B,N,768
 
-            # update
-            t_my = reduced_result_t + t_my
-            v_my = reduced_result_v + v_my
+            # 更新t_my和v_my
+            if self.mode in [1, 2, 5]:
+                t_my = reduced_result_t + self.up_t[i](t_my)
+                v_my = reduced_result_v + self.up_v[i](v_my)
+            else:  # mode 3,4
+                t_my = reduced_result_t + t_my
+                v_my = reduced_result_v + v_my
+
+            # 应用MLP和LayerNorm
             t_my = t_my + self.mlp_layers_t[i](self.norm_layers_t[i](t_my))
             v_my = v_my + self.mlp_layers_v[i](self.norm_layers_v[i](v_my))
 
         return t_my, v_my
+
+
+class SimilarityComparator(nn.Module):
+    def __init__(self, target_channels, source_channels):
+        """
+        :param target_channels: 目标特征图的通道数 C
+        :param source_channels: 符合条件的源特征图的通道数列表，例如 [c1, c2, c3, c4]
+        """
+        super(SimilarityComparator, self).__init__()
+        self.target_channels = target_channels
+        self.source_channels = source_channels
+
+        self.ta_line=nn.Linear(target_channels,target_channels)
+        # 为每个源特征图创建一个 Linear 层，用于将通道数从 C_i 转换为 C
+        self.linear_transforms = nn.ModuleList([
+            nn.Linear(C_i, target_channels) for C_i in source_channels
+        ])
+
+        self.cross_attn_list =  nn.ModuleList([Attention(target_channels, num_heads=8, proj_drop=0.)for _ in source_channels
+        ])
+        self.norm1_list = nn.ModuleList([
+            nn.LayerNorm(target_channels) for C_i in source_channels
+        ])
+        self.norm2_list = nn.ModuleList([
+            nn.LayerNorm(target_channels) for C_i in source_channels
+        ])
+    def forward(self, target, source_list):
+        """
+        :param target: 目标特征图，形状为 (B, N, C)
+        :param source_list: 源特征图列表，每个特征图形状为 (B, N, C_i)
+        :return: 权重 w，形状为 (B,)
+        """
+        B, N, C = target.shape
+        x=self.ta_line(target)
+        # 筛选源特征图列表，确保与 source_channels 中的顺序一致
+        ca_list = []
+        filtered_source_list=[]
+        for C_i in self.source_channels:
+            # 找到通道数为 C_i 的源特征图
+            for source in source_list:
+                if source.size(2) == C_i:
+                    filtered_source_list.append(source)
+                    break
+            else:
+                raise ValueError(f"未找到通道数为 {C_i} 的源特征图")
+
+        # 遍历筛选后的源特征图列表
+        for i, source in enumerate(filtered_source_list):
+            # 获取对应的 Linear 层
+            linear_transform = self.linear_transforms[i]
+
+            # 使用 Linear 层将源特征图的通道数从 C_i 转换为 C
+            source_transformed = linear_transform(source)  # 形状为 (B, N, C)
+            # cross att 计算
+            ca=self.cross_attn_list[i](self.norm1_list[i](source_transformed),self.norm2_list[i](x),self.norm2_list[i](x))
+            ca_list.append(ca)
+
+        # 将权重列表堆叠为一个张量
+        ca_list = torch.stack(ca_list, dim=0)  # 形状为 (num_source,B,N,C)
+
+        res=torch.sum(ca_list,dim=0)
+
+        return res
+
+
+def split_feature_tree(x, gp, depth=0, layer_list=None,channel_list=None):
+    """
+    递归地将特征图按通道维度分解为树形结构，并分层保存节点
+    :param x: 输入特征图，形状为 (B, N, C)
+    :param gp: 控制树的深度和节点数量的列表，例如 [2, 3]
+    :param depth: 当前递归深度-1 ,2-1=1
+    :param layer_list: 保存所有层的列表
+    :return: 所有层的列表，例如 [[第一层节点], [第二层节点], ...]
+    """
+    if layer_list is None:
+        layer_list = []
+    # 如果当前层未初始化，则初始化一个空列表
+    # if len(gp)-depth-1 >= len(layer_list):
+    #     layer_list.append([])
+
+    # 将当前节点加入当前层的列表
+    # layer_list[ len(gp)-depth-1].append(x)
+    layer_list.append(x)
+
+    # 终止条件：达到最大深度
+    if depth < 0:
+        return layer_list
+
+    # 获取当前深度的分组数
+    num_groups = gp[depth]
+
+    # 将特征图沿通道维度分解
+    B, N, C = x.shape
+    split_size = C // num_groups  # 每个子特征图的通道数
+    split_features = torch.split(x, split_size, dim=2)  # 沿通道维度分解
+
+    # 递归处理每个子特征图
+    for feature in split_features:
+        split_feature_tree(feature, gp, depth - 1, layer_list)
+
+    return layer_list
+
+
+def ALL_CHANNELS(C, gp, depth=0,channel_list=None):
+
+    if channel_list is None:
+        channel_list = []
+        channel_list.append(C)
+    # 如果当前层未初始化，则初始化一个空列表
+    # if len(gp)-depth-1 >= len(layer_list):
+    #     layer_list.append([])
+
+    # 将当前节点加入当前层的列表
+    # layer_list[ len(gp)-depth-1].append(x)
+
+    # 终止条件：达到最大深度
+    if depth < 0:
+        return channel_list
+
+    # 获取当前深度的分组数
+    num_groups = gp[depth]
+    assert C % num_groups == 0, "C 必须能被 num_groups 均匀划分"
+
+    # 将特征图沿通道维度分解
+
+    split_size = C // num_groups  # 每个子特征图的通道数
+    # 记录当前层的所有节点通道数
+    for _ in range(num_groups):
+        channel_list.append(split_size)
+
+    # 递归处理每个子特征图
+    for _ in range(num_groups):
+        ALL_CHANNELS(split_size, gp, depth - 1, channel_list)
+
+    return channel_list
