@@ -47,13 +47,12 @@ bash tools/dist_test.sh  configs/body/2d_kpt_sview_rgb_img/topdown_heatmap/mpii/
 
 # Citation
 If you use our code or models in your research, please cite with:
-<!-- ```
-@article{PGBS,
-	title={Human Pose Estimation via Parse Graph of Body Structure},
-	author={Liu, Shibang and Xie, Xuemei and Shi, Guangming},
-	journal=TCSVT,
-	year={2024},
-	publisher={IEEE}
+
+@article{PGVL,
+  title={Parse Graph-Based Visual-Language Interaction for Human Pose Estimation},
+  author={Liu, Shibang and Xie, Xuemei and Shi, Guangming},
+  journal={arXiv preprint arXiv:2509.07385},
+  year={2025}
 }
 
-```  -->
+
