@@ -55,5 +55,8 @@ If you use our code or models in your research, please cite with:
   year={2025}
 }
 ```
+## License
+The released code and models are licensed under CC-BY-NC 4.0.
+All datasets follow their original licenses. We do not redistribute any raw data.
 
 
